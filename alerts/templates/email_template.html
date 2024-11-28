@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: #fff;
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            padding: 25px;
+        }
+        h2 {
+            color: #2c3e50;
+            margin: 0 0 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+            font-size: 20px;
+        }
+        .summary {
+            color: #666;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 13px;
+        }
+        th {
+            color: #666;
+            font-weight: 600;
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+        td {
+            padding: 10px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        tr:hover td {
+            background: #fafafa;
+        }
+        .domain {
+            color: #2c3e50;
+            font-weight: 500;
+        }
+        .days-critical {
+            color: #dc3545;
+            font-weight: 600;
+            background: #fff5f5;
+            border-radius: 3px;
+        }
+        .days-warning {
+            color: #f0ad4e;
+            font-weight: 600;
+            background: #fff9f0;
+            border-radius: 3px;
+        }
+        .days-normal {
+            color: #28a745;
+        }
+        .legend {
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+            font-size: 12px;
+            color: #666;
+        }
+        .legend-item {
+            display: inline-block;
+            margin-right: 15px;
+        }
+        .legend-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .expires-critical {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .expires-warning {
+            color: #ffc107;
+            font-weight: bold;
+        }
+        .expires-normal {
+            color: #28a745;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Domain Expiration Alert</h2>
+        <div class="summary">Found {{ domains|length }} domains that need attention, please handle them in time.</div>
+        <table>
+            <tr>
+                <th>Domain</th>
+                <th>Registrar</th>
+                <th>Expiry Date</th>
+                <th>Days Remaining</th>
+            </tr>
+            <tbody>
+                {% for domain in domains %}
+                <tr>
+                    <td class="domain">{{ domain.domain }}</td>
+                    <td>{{ domain.registrar }}</td>
+                    <td>{{ domain.expiry_date }}</td>
+                    <td class="{% if domain.days_until_expiry <= 30 %}expires-critical{% elif domain.days_until_expiry <= 60 %}expires-warning{% else %}expires-normal{% endif %}">
+                        {{ domain.days_until_expiry }} days
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="legend">
+            <div class="legend-item">
+                <span class="legend-dot" style="background: #dc3545"></span>Expires within 30 days
+            </div>
+            <div class="legend-item">
+                <span class="legend-dot" style="background: #ffc107"></span>Expires within 60 days
+            </div>
+            <div class="legend-item">
+                <span class="legend-dot" style="background: #28a745"></span>Normal
+            </div>
+        </div>
+    </div>
+</body>
+</html>

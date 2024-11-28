@@ -1,0 +1,69 @@
+# Configuration files with sensitive data
+config.json
+.env
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.env/
+.venv/
+.conda/
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+.project
+.pydevproject
+.settings/
+
+# Logs and databases
+*.log
+*.sqlite
+*.db
+logs/
+log/
+
+# Cache files
+.cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
+
+# Local development files
+local_settings.py
+local_config.json
+test_config.json
