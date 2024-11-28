@@ -8,45 +8,70 @@ A robust Python-based system for monitoring domain expiration dates and sending 
 - **Special Domain Handling**: Custom support for special TLDs (e.g., .ai domains)
 - **Flexible Configuration**: JSON-based configuration for easy maintenance
 - **Email Alerts**: Automated notifications with configurable thresholds
-- **Error Handling**: Robust error recovery and retry mechanisms
+- **Error Handling**: Robust error recovery with 5 retries and configurable delays
 - **Color-Coded Status**: Visual indicators for domain status in both console and email outputs
-- **Rate Limiting**: Automatic handling of GoDaddy API rate limits
+- **Rate Limiting**: Automatic handling of GoDaddy API rate limits (60 requests/minute)
 - **Progress Tracking**: Real-time progress updates with estimated completion time
+
+## Project Structure
+
+```
+domain-sentinel/
+├── app.py                 # Main application file
+├── config.json.example    # Example configuration file
+├── Dockerfile            # Docker configuration
+├── requirements.txt      # Python dependencies
+├── alerts/              # Alert system module
+│   ├── __init__.py      # Module initialization
+│   ├── email_alerter.py # Email notification system
+│   ├── utils.py         # Utility functions
+│   └── templates/       # Email templates
+└── config/              # Configuration directory (created on setup)
+    └── config.json      # Your configuration file
+```
 
 ## Requirements
 
 - Python 3.12
-- Required packages (see `requirements.txt`)
+- Required packages (see `requirements.txt`):
+  - requests==2.31.0: HTTP client for API calls
+  - rich==13.7.0: Terminal formatting and progress bars
+  - python-whois==0.8.0: WHOIS lookups for non-GoDaddy domains
+  - python-dotenv==1.0.0: Environment variable management
+  - python-dateutil==2.8.2: Date parsing utilities
+  - jinja2==3.1.2: Template engine for email alerts
 - SMTP server for email alerts
 - GoDaddy API credentials (optional)
 
 ## Installation
 
-### Using Docker
-1. Build the Docker image:
+### Using Docker (Recommended)
+
+Our Docker setup includes:
+- Base: miniconda3 for reliable Python environment
+- Security: Non-root user (appuser) for container execution
+- Health Checks: 30-second intervals with 3 retries
+- Volume Management: Separate config and logs volumes
+- Resource Monitoring: Process health verification
+
+1. Build the image:
    ```bash
    docker build -t domain-sentinel .
    ```
 
-2. Prepare your configuration:
-   - Copy `config.json.example` to a new directory (e.g., `./config`):
-     ```bash
-     mkdir -p ./config
-     cp config.json.example ./config/config.json
-     ```
-   - Edit `./config/config.json` with your settings:
-     - GoDaddy API credentials
-     - API settings and limits
-     - Domain list
-     - Email alert settings
-     - Other configurations
+2. Prepare configuration:
+   ```bash
+   mkdir -p ./config
+   cp config.json.example ./config/config.json
+   # Edit ./config/config.json with your settings
+   ```
 
 3. Run the container:
    ```bash
    # Basic usage
    docker run -v $(pwd)/config:/app/config domain-sentinel
 
-   # With logs and automatic restart
+   # Production setup with logging
    docker run -d \
      -v $(pwd)/config:/app/config \
      -v $(pwd)/logs:/app/logs \
@@ -57,35 +82,6 @@ A robust Python-based system for monitoring domain expiration dates and sending 
      --name domain-sentinel \
      domain-sentinel
    ```
-
-4. Container Management:
-   ```bash
-   # View logs
-   docker logs domain-sentinel
-   docker logs -f domain-sentinel  # Follow log output
-
-   # Stop container
-   docker stop domain-sentinel
-
-   # Start container
-   docker start domain-sentinel
-
-   # Remove container
-   docker rm domain-sentinel
-
-   # View container status
-   docker ps -a | grep domain-sentinel
-   ```
-
-5. Volumes:
-   - `/app/config`: Configuration files (required)
-   - `/app/logs`: Application logs (optional)
-
-6. Notes:
-   - All settings are managed through `config.json`
-   - The container runs with non-root user for security
-   - Logs are rotated automatically when using json-file driver
-   - Container will restart automatically with `--restart unless-stopped`
 
 ### Using pip
 1. Clone the repository
@@ -124,7 +120,7 @@ For more information about the GoDaddy API, visit: https://developer.godaddy.com
 
 ## Configuration
 
-The `config.json` file contains all necessary settings:
+The `config.json` file supports:
 
 ```json
 {
@@ -132,12 +128,21 @@ The `config.json` file contains all necessary settings:
         {
             "name": "Example",
             "api_key": "your_godaddy_api_key",
-            "api_secret": "your_godaddy_api_secret"
+            "api_secret": "your_godaddy_api_secret",
+            "api_url": "https://api.godaddy.com/v1/domains"  # Optional override
         }
     ],
     "godaddy": {
         "api_url": "https://api.godaddy.com/v1/domains",
-        "page_size": 100
+        "page_size": 100,
+        "rate_limit": {
+            "requests_per_minute": 60,
+            "domain_limits": {
+                "availability": 50,
+                "management": 10,
+                "dns": 10
+            }
+        }
     },
     "domains": [
         "example.com"
@@ -159,21 +164,70 @@ The `config.json` file contains all necessary settings:
             "username": "user",
             "password": "pass",
             "use_tls": true
-        }
+        },
+        "whitelist": []  # Optional domain whitelist
     }
 }
 ```
 
-### Configuration Sections
+### Configuration Details
 
-- **accounts**: GoDaddy API credentials
-- **godaddy**: GoDaddy API settings
-- **domains**: List of domains to monitor
-- **special_domains**: Custom handling for specific TLDs
-- **email_alert**: Email notification settings
-  - `alert_threshold`: Days before expiration to send alerts
-  - `recipients`: List of email addresses to notify
+- **accounts**: Multiple GoDaddy account support
+  - `name`: Account identifier
+  - `api_key`, `api_secret`: GoDaddy API credentials
+  - `api_url`: Optional per-account API URL override
+
+- **godaddy**: Global GoDaddy settings
+  - `api_url`: Default API endpoint
+  - `page_size`: Domains per page (default: 100)
+  - `rate_limit`: API request limiting
+    - `requests_per_minute`: Maximum API calls
+    - `domain_limits`: Minimum domain requirements
+
+- **domains**: Additional domains to monitor (non-GoDaddy)
+
+- **special_domains**: Custom TLD handling
+  - Currently supports .ai domains
+  - Manual expiry date management
+
+- **email_alert**: Notification settings
+  - `alert_threshold`: Days before expiry
+  - `recipients`: Alert recipients
   - `smtp`: Email server configuration
+  - `whitelist`: Optional domain filtering
+
+## Error Handling
+
+The system includes:
+- **Retry Logic**: 5 attempts for failed queries with 2-second delays
+- **Rate Limiting**: Automatic request throttling
+- **Timeout Handling**: 10-second timeout for WHOIS queries
+- **Special TLD Support**: Custom handling for .ai domains
+- **Fallback Mechanisms**: WHOIS fallback for non-GoDaddy domains
+
+## Security Best Practices
+
+- Container runs as non-root user
+- Sensitive data stored in mounted config volume
+- TLS support for SMTP connections
+- Environment variable support for credentials
+- Regular dependency updates recommended
+- Log rotation and size limits
+- Health monitoring with automatic recovery
+
+## Monitoring and Maintenance
+
+### Health Checks
+- 30-second intervals
+- 10-second timeout
+- 5-second startup grace period
+- 3 retries before failure
+
+### Log Management
+- JSON format logging
+- 10MB per file limit
+- 3 file rotation
+- Automatic cleanup
 
 ## Usage
 
@@ -186,21 +240,6 @@ The script will:
 1. Check all configured domains
 2. Display status in the console
 3. Send email alerts for domains nearing expiration
-
-## Error Handling
-
-The system includes:
-- Multiple retry attempts for failed queries
-- Timeout handling for WHOIS queries
-- Special handling for different domain formats
-- Fallback mechanisms for data extraction
-
-## Security Notes
-
-- Store sensitive information (API keys, passwords) securely
-- Use environment variables when possible
-- Enable TLS for SMTP connections
-- Regularly update dependencies
 
 ## Contributing
 
