@@ -10,6 +10,8 @@ A robust Python-based system for monitoring domain expiration dates and sending 
 - **Email Alerts**: Automated notifications with configurable thresholds
 - **Error Handling**: Robust error recovery and retry mechanisms
 - **Color-Coded Status**: Visual indicators for domain status in both console and email outputs
+- **Rate Limiting**: Automatic handling of GoDaddy API rate limits
+- **Progress Tracking**: Real-time progress updates with estimated completion time
 
 ## Requirements
 
@@ -20,12 +22,105 @@ A robust Python-based system for monitoring domain expiration dates and sending 
 
 ## Installation
 
+### Using Docker
+1. Build the Docker image:
+   ```bash
+   docker build -t domain-sentinel .
+   ```
+
+2. Prepare your configuration:
+   - Copy `config.json.example` to a new directory (e.g., `./config`):
+     ```bash
+     mkdir -p ./config
+     cp config.json.example ./config/config.json
+     ```
+   - Edit `./config/config.json` with your settings:
+     - GoDaddy API credentials
+     - API settings and limits
+     - Domain list
+     - Email alert settings
+     - Other configurations
+
+3. Run the container:
+   ```bash
+   # Basic usage
+   docker run -v $(pwd)/config:/app/config domain-sentinel
+
+   # With logs and automatic restart
+   docker run -d \
+     -v $(pwd)/config:/app/config \
+     -v $(pwd)/logs:/app/logs \
+     --restart unless-stopped \
+     --log-driver json-file \
+     --log-opt max-size=10m \
+     --log-opt max-file=3 \
+     --name domain-sentinel \
+     domain-sentinel
+   ```
+
+4. Container Management:
+   ```bash
+   # View logs
+   docker logs domain-sentinel
+   docker logs -f domain-sentinel  # Follow log output
+
+   # Stop container
+   docker stop domain-sentinel
+
+   # Start container
+   docker start domain-sentinel
+
+   # Remove container
+   docker rm domain-sentinel
+
+   # View container status
+   docker ps -a | grep domain-sentinel
+   ```
+
+5. Volumes:
+   - `/app/config`: Configuration files (required)
+   - `/app/logs`: Application logs (optional)
+
+6. Notes:
+   - All settings are managed through `config.json`
+   - The container runs with non-root user for security
+   - Logs are rotated automatically when using json-file driver
+   - Container will restart automatically with `--restart unless-stopped`
+
+### Using pip
 1. Clone the repository
 2. Install dependencies:
    ```bash
    pip install -r requirements.txt
    ```
+
+### Using conda
+1. Create and activate conda environment:
+   ```bash
+   conda create -n domain-sentinel python=3.12 -y
+   conda activate domain-sentinel
+   ```
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
 3. Copy `config.json.example` to `config.json` and update with your settings
+
+## GoDaddy API Limitations
+
+The system automatically handles the following GoDaddy API limitations:
+
+1. **Rate Limits**:
+   - Maximum 60 requests per minute
+   - Automatic waiting and continuation when limit is reached
+   - Progress tracking with estimated completion time
+
+2. **Account Requirements**:
+   - Availability API: Limited to accounts with 50 or more domains
+   - Management and DNS APIs: Limited to accounts with 10 or more domains and/or an active Discount Domain Club – Premier Membership plan
+
+For more information about the GoDaddy API, visit: https://developer.godaddy.com/getstarted
 
 ## Configuration
 

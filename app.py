@@ -23,12 +23,86 @@ console = Console()
 
 class GoDaddyAccount:
     """GoDaddy account configuration"""
-    def __init__(self, api_key: str, api_secret: str, name: str = "Default"):
+    def __init__(self, api_key: str, api_secret: str, name: str = "Default", api_url: str = None):
         self.api_key = api_key.strip()
         self.api_secret = api_secret.strip()
         self.name = name
-        self.api_url = 'https://api.godaddy.com/v1/domains'
-        self.page_size = 100  # Number of domains per page
+        self.api_url = api_url
+        self.page_size = None  # 将从配置文件加载
+        # API请求限制相关属性
+        self.request_count = 0
+        self.last_request_time = datetime.now()
+        self.domain_count = 0
+        # 从配置文件加载API限制设置
+        self.rate_limit = None
+        self.domain_limits = None
+        
+    def set_api_limits(self, config: Dict):
+        """从配置文件设置API限制和基本配置"""
+        if config and 'godaddy' in config:
+            godaddy_config = config['godaddy']
+            # 设置基本配置
+            self.api_url = self.api_url or godaddy_config.get('api_url', 'https://api.godaddy.com/v1/domains')
+            self.page_size = godaddy_config.get('page_size', 100)
+            # 设置API限制
+            if 'rate_limit' in godaddy_config:
+                self.rate_limit = godaddy_config['rate_limit'].get('requests_per_minute', 60)
+                self.domain_limits = godaddy_config['rate_limit'].get('domain_limits', {
+                    'availability': 50,
+                    'management': 10,
+                    'dns': 10
+                })
+        
+    def wait_for_rate_limit(self) -> None:
+        """等待直到可以继续发送请求"""
+        current_time = datetime.now()
+        time_since_last = (current_time - self.last_request_time).total_seconds()
+        
+        if time_since_last < 60 and self.request_count >= (self.rate_limit or 60):
+            wait_time = 60 - time_since_last
+            console.print(f"[yellow]Rate limit reached for account {self.name}. Waiting {wait_time:.1f} seconds...[/yellow]")
+            time.sleep(wait_time)
+            self.request_count = 0
+            self.last_request_time = datetime.now()
+        
+    def check_rate_limit(self, wait: bool = True) -> bool:
+        """检查API请求频率限制
+        wait: 如果为True，当达到限制时会等待；如果为False，直接返回False
+        """
+        current_time = datetime.now()
+        # 如果距离上次请求已经过了一分钟，重置计数器
+        if (current_time - self.last_request_time).total_seconds() >= 60:
+            self.request_count = 0
+            self.last_request_time = current_time
+        
+        # 使用配置的限制或默认值
+        limit = self.rate_limit if self.rate_limit is not None else 60
+        
+        # 检查是否超出限制
+        if self.request_count >= limit:
+            if wait:
+                self.wait_for_rate_limit()
+                return True
+            return False
+        
+        self.request_count += 1
+        return True
+    
+    def check_domain_limit(self, api_type: str) -> bool:
+        """检查账户域名数量限制
+        api_type: 'availability' | 'management' | 'dns'
+        """
+        if not self.domain_limits:
+            return True
+            
+        limit = self.domain_limits.get(api_type)
+        if not limit:
+            return True
+            
+        if self.domain_count < limit:
+            console.print(f"[yellow]Warning: Account {self.name} has less than {limit} domains. {api_type.capitalize()} API access may be limited.[/yellow]")
+            return False
+        return True
 
 class DomainMonitor:
     def __init__(self, config_file: str = "config.json"):
@@ -53,13 +127,13 @@ class DomainMonitor:
                     api_key = account_config.get('api_key')
                     api_secret = account_config.get('api_secret')
                     name = account_config.get('name', 'Default')
+                    api_url = account_config.get('api_url')
                     
                     if api_key and api_secret:
-                        account = GoDaddyAccount(api_key, api_secret, name)
+                        account = GoDaddyAccount(api_key, api_secret, name, api_url)
                         # Override default GoDaddy settings if configured
                         if self.godaddy_config:
-                            account.api_url = self.godaddy_config.get('api_url', account.api_url)
-                            account.page_size = self.godaddy_config.get('page_size', account.page_size)
+                            account.set_api_limits(self.config)
                         self.accounts.append(account)
                 
                 # Load domain list
@@ -101,19 +175,48 @@ class DomainMonitor:
         }
         
         try:
+            # 检查API请求限制（等待模式）
+            account.check_rate_limit(wait=True)
+            
             url = account.api_url
             response = requests.get(url, headers=headers, params=params, timeout=30)
             
             if response.status_code in [200, 203]:
                 data = response.json()
                 if isinstance(data, list):
+                    # 更新账户域名数量
+                    account.domain_count = len(data)
+                    
+                    # 检查域名数量限制
+                    account.check_domain_limit('management')
+                    
+                    # 计算预估完成时间
+                    total_domains = len(data)
+                    requests_per_minute = account.rate_limit or 60
+                    estimated_minutes = (total_domains + requests_per_minute - 1) // requests_per_minute
+                    
+                    console.print(f"\n[cyan]Found {total_domains} domains.[/cyan]")
+                    if total_domains > requests_per_minute:
+                        console.print(f"[yellow]Due to API rate limits, this will take approximately {estimated_minutes} minutes to complete.[/yellow]")
+                    
                     with Progress() as progress:
-                        task = progress.add_task(f"[cyan]Getting domains from {account.name} account...[/cyan]", total=len(data))
-                        for domain_data in data:
+                        task = progress.add_task(
+                            f"[cyan]Getting domains from {account.name} account...[/cyan]",
+                            total=total_domains,
+                            description=f"Processing domains (0/{total_domains})"
+                        )
+                        
+                        for i, domain_data in enumerate(data, 1):
                             domain_info = self.check_specific_domain(domain_data['domain'], account)
                             if domain_info:
                                 domains.append(domain_info)
-                            progress.advance(task)
+                            progress.update(
+                                task,
+                                advance=1,
+                                description=f"Processing domains ({i}/{total_domains})"
+                            )
+                    
+                    console.print(f"\n[green]Successfully processed {len(domains)} domains![/green]")
                     return domains
             elif response.status_code == 403:
                 console.print(f"[red]Access denied for account {account.name}[/red]")
@@ -126,6 +229,9 @@ class DomainMonitor:
 
     def check_specific_domain(self, domain: str, account: GoDaddyAccount) -> Dict:
         """Check specific domain information"""
+        # 检查API请求限制（等待模式）
+        account.check_rate_limit(wait=True)
+        
         headers = {
             'Authorization': f'sso-key {account.api_key}:{account.api_secret}',
             'Accept': 'application/json'

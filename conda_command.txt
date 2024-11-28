@@ -1,2 +1,0 @@
-conda create -n domain-sentinel python=3.12 -y
-conda activate domain-sentinel
