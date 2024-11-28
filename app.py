@@ -201,20 +201,15 @@ class DomainMonitor:
                     
                     with Progress() as progress:
                         task = progress.add_task(
-                            f"[cyan]Getting domains from {account.name} account...[/cyan]",
-                            total=total_domains,
-                            description=f"Processing domains (0/{total_domains})"
+                            description=f"[cyan]Getting domains from {account.name} account...[/cyan]",
+                            total=total_domains
                         )
                         
                         for i, domain_data in enumerate(data, 1):
                             domain_info = self.check_specific_domain(domain_data['domain'], account)
                             if domain_info:
                                 domains.append(domain_info)
-                            progress.update(
-                                task,
-                                advance=1,
-                                description=f"Processing domains ({i}/{total_domains})"
-                            )
+                            progress.advance(task)
                     
                     console.print(f"\n[green]Successfully processed {len(domains)} domains![/green]")
                     return domains
