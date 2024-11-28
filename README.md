@@ -7,7 +7,7 @@ A robust Python-based system for monitoring domain expiration dates and sending 
 - **Multi-Registrar Support**: Primary support for GoDaddy domains with WHOIS fallback
 - **Special Domain Handling**: Custom support for special TLDs (e.g., .ai domains)
 - **Flexible Configuration**: JSON-based configuration for easy maintenance
-- **Email Alerts**: Automated notifications with configurable thresholds
+- **Email Alerts**: Automated notifications with configurable thresholds and HTML templates
 - **Error Handling**: Robust error recovery with 5 retries and configurable delays
 - **Color-Coded Status**: Visual indicators for domain status in both console and email outputs
 - **Rate Limiting**: Automatic handling of GoDaddy API rate limits (60 requests/minute)
@@ -17,15 +17,15 @@ A robust Python-based system for monitoring domain expiration dates and sending 
 
 ```
 domain-sentinel/
-├── app.py                 # Main application file
+├── app.py                 # Main application file with domain monitoring logic
 ├── config.json.example    # Example configuration file
-├── Dockerfile            # Docker configuration
 ├── requirements.txt      # Python dependencies
 ├── alerts/              # Alert system module
 │   ├── __init__.py      # Module initialization
 │   ├── email_alerter.py # Email notification system
-│   ├── utils.py         # Utility functions
-│   └── templates/       # Email templates
+│   ├── utils.py         # Date formatting and style utilities
+│   └── templates/       # HTML email templates
+│       └── email_template.html  # Responsive HTML email template
 └── config/              # Configuration directory (created on setup)
     └── config.json      # Your configuration file
 ```
@@ -45,49 +45,16 @@ domain-sentinel/
 
 ## Installation
 
-### Using Docker (Recommended)
-
-Our Docker setup includes:
-- Base: miniconda3 for reliable Python environment
-- Security: Non-root user (appuser) for container execution
-- Health Checks: 30-second intervals with 3 retries
-- Volume Management: Separate config and logs volumes
-- Resource Monitoring: Process health verification
-
-1. Build the image:
-   ```bash
-   docker build -t domain-sentinel .
-   ```
-
-2. Prepare configuration:
-   ```bash
-   mkdir -p ./config
-   cp config.json.example ./config/config.json
-   # Edit ./config/config.json with your settings
-   ```
-
-3. Run the container:
-   ```bash
-   # Basic usage
-   docker run -v $(pwd)/config:/app/config domain-sentinel
-
-   # Production setup with logging
-   docker run -d \
-     -v $(pwd)/config:/app/config \
-     -v $(pwd)/logs:/app/logs \
-     --restart unless-stopped \
-     --log-driver json-file \
-     --log-opt max-size=10m \
-     --log-opt max-file=3 \
-     --name domain-sentinel \
-     domain-sentinel
-   ```
-
 ### Using pip
 1. Clone the repository
 2. Install dependencies:
    ```bash
    pip install -r requirements.txt
+   ```
+3. Create and configure settings:
+   ```bash
+   cp config.json.example config.json
+   # Edit config.json with your settings
    ```
 
 ### Using conda
@@ -100,8 +67,21 @@ Our Docker setup includes:
    ```bash
    pip install -r requirements.txt
    ```
+3. Create and configure settings:
+   ```bash
+   cp config.json.example config.json
+   # Edit config.json with your settings
+   ```
 
-3. Copy `config.json.example` to `config.json` and update with your settings
+## Environment Variables Support
+
+The system supports loading credentials from environment variables:
+```bash
+# Required if no config.json is present
+GODADDY_API_KEY="your_api_key"
+GODADDY_API_SECRET="your_api_secret"
+GODADDY_ACCOUNT_NAME="Default"  # Optional, defaults to "Default"
+```
 
 ## GoDaddy API Limitations
 
@@ -181,53 +161,39 @@ The `config.json` file supports:
   - `api_url`: Default API endpoint
   - `page_size`: Domains per page (default: 100)
   - `rate_limit`: API request limiting
-    - `requests_per_minute`: Maximum API calls
+    - `requests_per_minute`: Maximum API calls (default: 60)
     - `domain_limits`: Minimum domain requirements
 
 - **domains**: Additional domains to monitor (non-GoDaddy)
+  - Supports any domain with WHOIS information
+  - Automatically falls back to WHOIS lookup if not in GoDaddy
 
 - **special_domains**: Custom TLD handling
   - Currently supports .ai domains
   - Manual expiry date management
+  - Useful for domains with limited WHOIS access
 
 - **email_alert**: Notification settings
-  - `alert_threshold`: Days before expiry
-  - `recipients`: Alert recipients
-  - `smtp`: Email server configuration
+  - `alert_threshold`: Days before expiry (default: 60)
+  - `recipients`: List of alert recipients
+  - `smtp`: Email server configuration with TLS support
   - `whitelist`: Optional domain filtering
 
 ## Error Handling
 
 The system includes:
 - **Retry Logic**: 5 attempts for failed queries with 2-second delays
-- **Rate Limiting**: Automatic request throttling
+- **Rate Limiting**: Automatic request throttling with wait support
 - **Timeout Handling**: 10-second timeout for WHOIS queries
 - **Special TLD Support**: Custom handling for .ai domains
 - **Fallback Mechanisms**: WHOIS fallback for non-GoDaddy domains
 
 ## Security Best Practices
 
-- Container runs as non-root user
-- Sensitive data stored in mounted config volume
+- Sensitive data stored in configuration file
 - TLS support for SMTP connections
 - Environment variable support for credentials
 - Regular dependency updates recommended
-- Log rotation and size limits
-- Health monitoring with automatic recovery
-
-## Monitoring and Maintenance
-
-### Health Checks
-- 30-second intervals
-- 10-second timeout
-- 5-second startup grace period
-- 3 retries before failure
-
-### Log Management
-- JSON format logging
-- 10MB per file limit
-- 3 file rotation
-- Automatic cleanup
 
 ## Usage
 
@@ -238,8 +204,11 @@ python app.py
 
 The script will:
 1. Check all configured domains
-2. Display status in the console
-3. Send email alerts for domains nearing expiration
+   - GoDaddy domains via API
+   - Non-GoDaddy domains via WHOIS
+   - Special TLDs via configuration
+2. Display color-coded status in the console
+3. Send HTML email alerts for domains nearing expiration
 
 ## Contributing
 

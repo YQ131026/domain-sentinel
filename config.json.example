@@ -1,48 +1,80 @@
 {
+    // Account configuration section
+    // This section defines the accounts to be used for API access
     "accounts": [
         {
+            // Account identifier - can have multiple accounts
             "name": "Example",
+            // GoDaddy API credentials from https://developer.godaddy.com/
+            // Replace with your actual API key and secret
             "api_key": "your_godaddy_api_key",
             "api_secret": "your_godaddy_api_secret",
+            // Optional: Override default API URL for this account
             "api_url": "https://api.godaddy.com/v1/domains"
         }
     ],
+    // Global GoDaddy API settings
+    // This section defines the default API settings for all accounts
     "godaddy": {
+        // Default API endpoint if not specified in account
         "api_url": "https://api.godaddy.com/v1/domains",
+        // Number of domains to fetch per API request (max: 100)
         "page_size": 100,
+        // API rate limiting configuration
+        // This section defines the rate limits for API requests
         "rate_limit": {
+            // Maximum API calls per minute (GoDaddy limit: 60)
             "requests_per_minute": 60,
+            // Minimum domain requirements for API access
             "domain_limits": {
+                // Domains needed for availability API access
                 "availability": 50,
+                // Domains needed for management API access
                 "management": 10,
+                // Domains needed for DNS API access
                 "dns": 10
             }
         }
     },
+    // Additional domains to monitor (non-GoDaddy)
+    // These will use WHOIS lookup if not found in GoDaddy
     "domains": [
         "example.com",
         "example.co.uk"
     ],
+    // Custom handling for special TLDs (e.g., .ai domains)
+    // This section defines custom handling for specific TLDs
     "special_domains": {
+        // .ai domain configuration (manual expiry tracking)
         "ai": {
             "example.ai": {
+                // Manual expiry date in YYYY-MM-DD format
                 "expiry_date": "2024-12-31",
+                // Optional: registrar information
                 "registrar": "Example Registrar"
             }
         }
     },
+    // Email notification configuration
+    // This section defines the email notification settings
     "email_alert": {
+        // Days before expiry to send alerts (default: 60)
         "alert_threshold": 60,
+        // List of email addresses to receive alerts
         "recipients": [
             "admin@example.com"
         ],
+        // SMTP server configuration for sending emails
         "smtp": {
             "host": "smtp.example.com",
             "port": 587,
             "username": "alerts@example.com",
             "password": "your_smtp_password",
+            // Enable TLS encryption for SMTP (recommended)
             "use_tls": true
         },
+        // Optional: List of domains to monitor
+        // If empty, all domains will be monitored
         "whitelist": []
     }
 }
