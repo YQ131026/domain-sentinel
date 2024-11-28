@@ -224,59 +224,75 @@ class DomainMonitor:
 
     def check_specific_domain(self, domain: str, account: GoDaddyAccount) -> Dict:
         """Check specific domain information"""
-        # 检查API请求限制（等待模式）
-        account.check_rate_limit(wait=True)
+        max_retries = 5
+        retry_delay = 2  # seconds between retries
         
-        headers = {
-            'Authorization': f'sso-key {account.api_key}:{account.api_secret}',
-            'Accept': 'application/json'
-        }
-        
-        try:
-            url = f"{account.api_url}/{domain}"
-            response = requests.get(url, headers=headers)
-            
-            if response.status_code in [200, 203]:
-                data = response.json()
-                expiry_date = datetime.strptime(data['expires'], '%Y-%m-%dT%H:%M:%S.%fZ')
-                days_until_expiry = (expiry_date - datetime.now()).days
+        for attempt in range(max_retries):
+            try:
+                # 检查API请求限制（等待模式）
+                account.check_rate_limit(wait=True)
                 
-                status = data.get('status', 'UNKNOWN')
-                if status == 'AWAITING_DOCUMENT_UPLOAD':
-                    status_display = '📄 Document Upload Pending'
-                elif status == 'ACTIVE':
-                    status_display = '✅ Active'
-                else:
-                    status_display = f'❓ {status}'
-                
-                if days_until_expiry <= 30:
-                    status_display = '⚠️ ' + status_display
-                elif days_until_expiry <= 90:
-                    status_display = '⚡ ' + status_display
-                
-                return {
-                    'domain': domain,
-                    'account_name': account.name,
-                    'expiry_date': expiry_date,
-                    'days_until_expiry': days_until_expiry,
-                    'registrar': 'GoDaddy',
-                    'status': status,
-                    'status_display': status_display,
-                    'created_at': datetime.strptime(data['createdAt'], '%Y-%m-%dT%H:%M:%S.%fZ'),
-                    'nameServers': data.get('nameServers', []),
-                    'privacy': data.get('privacy', False)
+                headers = {
+                    'Authorization': f'sso-key {account.api_key}:{account.api_secret}',
+                    'Accept': 'application/json'
                 }
-            elif response.status_code == 404:
-                return None
-            elif response.status_code == 403:
-                return None
-            else:
-                console.print(f"[red]Error checking {domain}[/red]")
-                return None
-        except Exception as e:
-            console.print(f"[red]Error checking {domain}: {str(e)}[/red]")
-            return None
-    
+                
+                url = f"{account.api_url}/{domain}"
+                response = requests.get(url, headers=headers)
+                
+                if response.status_code in [200, 203]:
+                    data = response.json()
+                    expiry_date = datetime.strptime(data['expires'], '%Y-%m-%dT%H:%M:%S.%fZ')
+                    days_until_expiry = (expiry_date - datetime.now()).days
+                    
+                    status = data.get('status', 'UNKNOWN')
+                    if status == 'AWAITING_DOCUMENT_UPLOAD':
+                        status_display = '📄 Document Upload Pending'
+                    elif status == 'ACTIVE':
+                        status_display = '✅ Active'
+                    else:
+                        status_display = f'❓ {status}'
+                    
+                    if days_until_expiry <= 30:
+                        status_display = '⚠️ ' + status_display
+                    elif days_until_expiry <= 90:
+                        status_display = '⚡ ' + status_display
+                    
+                    return {
+                        'domain': domain,
+                        'account_name': account.name,
+                        'expiry_date': expiry_date,
+                        'days_until_expiry': days_until_expiry,
+                        'registrar': 'GoDaddy',
+                        'status': status,
+                        'status_display': status_display,
+                        'created_at': datetime.strptime(data['createdAt'], '%Y-%m-%dT%H:%M:%S.%fZ'),
+                        'nameServers': data.get('nameServers', []),
+                        'privacy': data.get('privacy', False)
+                    }
+                elif response.status_code == 404:
+                    return None
+                elif response.status_code == 403:
+                    return None
+                else:
+                    if attempt < max_retries - 1:
+                        console.print(f"[yellow]Error checking {domain} (Attempt {attempt + 1}/{max_retries}). Retrying in {retry_delay} seconds...[/yellow]")
+                        time.sleep(retry_delay)
+                        continue
+                    else:
+                        console.print(f"[red]Error checking {domain} after {max_retries} attempts[/red]")
+                        return None
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    console.print(f"[yellow]Error checking {domain}: {str(e)} (Attempt {attempt + 1}/{max_retries}). Retrying in {retry_delay} seconds...[/yellow]")
+                    time.sleep(retry_delay)
+                    continue
+                else:
+                    console.print(f"[red]Error checking {domain} after {max_retries} attempts: {str(e)}[/red]")
+                    return None
+        
+        return None
+
     def check_domain_without_auth(self, domain: str) -> Dict:
         """Check domain information without authentication"""
         # Check if it's a special .ai domain first
